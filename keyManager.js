@@ -3,7 +3,7 @@
  * Encrypts sensitive data instead of storing plain text
  */
 
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -27,14 +27,14 @@ class KeyManager {
   }
 
   /**
-   * Encrypt sensitive data
+   * Encrypt sensitive data using AES-256-GCM
    */
   encrypt(data, password) {
     const salt = crypto.randomBytes(32);
     const key = this.deriveKey(password, salt);
     const iv = crypto.randomBytes(this.ivLength);
 
-    const cipher = crypto.createCipher(this.algorithm, key);
+    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
     cipher.setAAD(salt);
 
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
@@ -51,7 +51,7 @@ class KeyManager {
   }
 
   /**
-   * Decrypt sensitive data
+   * Decrypt sensitive data using AES-256-GCM
    */
   decrypt(encryptedData, password) {
     const { salt, iv, encrypted, tag } = encryptedData;
@@ -62,7 +62,7 @@ class KeyManager {
 
     const key = this.deriveKey(password, saltBuffer);
 
-    const decipher = crypto.createDecipher(this.algorithm, key);
+    const decipher = crypto.createDecipheriv(this.algorithm, key, ivBuffer);
     decipher.setAAD(saltBuffer);
     decipher.setAuthTag(tagBuffer);
 
