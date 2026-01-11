@@ -182,7 +182,7 @@ async function main() {
   
   if (checkOnly) {
     console.log("\n(Check mode - not redeeming)");
-    return { redeemed: 0, total: positions.length };
+    return { redeemed: 0, total: positions.length, checkOnly: true };
   }
   
   // Initialize RelayClient with PROXY type
@@ -278,7 +278,10 @@ main()
   .then(result => {
     // Allow event loop to clean up async handles before exiting (fixes Windows libuv assertion)
     setTimeout(() => {
-      process.exit(result.redeemed === result.total ? 0 : 1);
+      // In check mode, success means we completed the check without errors
+      // In redeem mode, success means all positions were redeemed
+      const success = result.checkOnly || result.redeemed === result.total;
+      process.exit(success ? 0 : 1);
     }, 100);
   })
   .catch(error => {

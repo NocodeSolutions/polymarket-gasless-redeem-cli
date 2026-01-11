@@ -187,10 +187,15 @@ class RedemptionCLI:
                         self.log(f"Total value: ${result['total_value']:.4f}")
                     if not self.check_only and result["redeemed"] > 0:
                         self.log(f"Successfully redeemed {result['redeemed']} position(s)")
+                        for tx_hash in result["transactions"]:
+                            self.log(f"Tx: https://polygonscan.com/tx/{tx_hash}")
+                    elif self.check_only:
+                        self.log("Check complete")
                 else:
                     self.log("No redeemable positions found")
             else:
-                self.log(f"Redemption failed with exit code {returncode}", "ERROR")
+                action = "Check" if self.check_only else "Redemption"
+                self.log(f"{action} failed with exit code {returncode}", "ERROR")
             
             return result
             
