@@ -1,29 +1,49 @@
-# 🔄 Polymarket Gasless Redeem CLI
+# 🔄 Polymarket Redeem Bot - Automated Gasless Token Redemption CLI
 
-> A standalone command-line tool for automatically redeeming Polymarket positions using gasless transactions.
+> **Polymarket Trading Bot** for automatically redeeming winning positions and claiming USDC payouts. This open-source **Polymarket CLI tool** uses the **Polymarket Redeem API** with **gasless transactions** on Polygon — zero gas fees, fully automated.
+
+**Keywords:** Polymarket API, Polymarket redeem, Polymarket trading bot, Polymarket CLI, Polymarket automation, Polymarket withdraw winnings, Polymarket claim positions, prediction market bot, Polygon gasless transactions, Polymarket Builder API, CTF token redemption
+
+---
+
+## 🎯 What This Tool Does
+
+This is a **Polymarket redemption bot** that automatically:
+- ✅ **Claims your winnings** from resolved prediction markets
+- ✅ **Redeems CTF tokens** (Conditional Token Framework) to USDC
+- ✅ **Uses gasless transactions** — you pay zero gas fees
+- ✅ **Runs automatically** on a schedule (every 15 min, hourly, etc.)
+- ✅ **Works with both binary and negative risk markets**
+
+Perfect for Polymarket traders who want to **automate withdrawals** and **claim winnings automatically** without manual intervention.
+
+---
 
 ## ⚠️ Disclaimer
 
-**This is NOT an official Polymarket library.** This project (`polymarket-gasless-redeem-cli`) is an independent, community-developed tool and is not affiliated with, endorsed by, or maintained by Polymarket.
+**This is NOT an official Polymarket library.** This project (`polymarket-gasless-redeem-cli`) is an independent, community-developed **Polymarket trading tool** and is not affiliated with, endorsed by, or maintained by Polymarket.
 
 **Important Notes:**
-- This CLI tool interacts with Polymarket's Builder Relayer API and Data API, which may change without notice
-- The code has been developed based on public Polymarket documentation and APIs, but has not been officially reviewed or approved by Polymarket
+- This CLI bot interacts with **Polymarket's Builder Relayer API** and **Data API**, which may change without notice
+- The code has been developed based on public **Polymarket API documentation**, but has not been officially reviewed or approved by Polymarket
 - API endpoints, authentication methods, or transaction formats may change, potentially breaking this tool
 - While the code includes security measures (encrypted key storage, input validation, rate limiting), users should review the code before use
 
-**Use at your own risk.** The author is not responsible for any issues, data loss, failed transactions, or problems arising from the use of this library. Always verify transactions on PolygonScan and test with small amounts first.
+**Use at your own risk.** The author is not responsible for any issues, data loss, failed transactions, or problems arising from the use of this tool. Always verify transactions on PolygonScan and test with small amounts first.
 
 ---
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#-license)
+[![Polymarket](https://img.shields.io/badge/Polymarket-API-purple.svg)](https://docs.polymarket.com)
+[![Polygon](https://img.shields.io/badge/Polygon-Network-blueviolet.svg)](https://polygon.technology/)
 
 ---
 
 ## 📋 Table of Contents
 
+- [What This Tool Does](#-what-this-tool-does)
 - [Features](#-features)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
@@ -34,6 +54,7 @@
 - [Running as a Service](#-running-as-a-service)
 - [Troubleshooting](#-troubleshooting)
 - [Security](#-security-considerations)
+- [FAQ](#-frequently-asked-questions)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -41,14 +62,16 @@
 
 ## ✨ Features
 
-- 🚀 **Gasless Redemption** - Uses Polymarket's Builder Relayer for zero-gas transactions
-- ⏰ **Automatic Mode** - Runs redemption automatically at configurable intervals
-- 🎯 **Manual Mode** - One-time execution for immediate redemption
-- 🔍 **Check Mode** - Check for redeemable positions without redeeming
-- 💻 **CLI Interface** - Simple command-line interface with comprehensive help
-- 📊 **Detailed Logging** - Full transaction history with PolygonScan links
-- 🔒 **Secure** - AES-256-GCM encrypted credential storage
+- 🚀 **Gasless Redemption** - Uses **Polymarket's Builder Relayer API** for zero-gas transactions on Polygon
+- 💰 **Automatic Withdrawals** - Claim your Polymarket winnings automatically
+- ⏰ **Scheduled Automation** - Run redemptions at configurable intervals (every 15 min, hourly, daily)
+- 🎯 **One-Time Mode** - Execute immediate redemption when you need it
+- 🔍 **Check Mode** - View redeemable positions without redeeming (dry run)
+- 💻 **CLI Interface** - Simple command-line tool with comprehensive help
+- 📊 **Transaction Logging** - Full history with PolygonScan links for verification
+- 🔒 **Secure Storage** - AES-256-GCM encrypted credential storage (not plaintext!)
 - 🌐 **Cross-Platform** - Works on Windows, Linux, and macOS
+- 🔄 **CTF & NegRisk Support** - Handles both binary markets and negative risk positions
 
 ---
 
@@ -424,18 +447,20 @@ polymarket-gasless-redeem-cli/
 
 ## 🔧 How It Works
 
-The CLI follows these steps:
+### Polymarket Redemption Flow
 
-1. **🔍 Fetch Positions** - Queries Polymarket's Data API for redeemable positions
-2. **📊 Group by Condition** - Aggregates positions by condition ID
-3. **🔨 Build Transactions** - Creates redemption transactions for each condition
-4. **🚀 Submit Gasless** - Submits transactions via Polymarket's gasless relayer
-5. **✅ Confirm & Log** - Waits for confirmation and logs results with PolygonScan links
+This tool automates the **Polymarket token redemption process**:
 
-### Supported Position Types
+1. **🔍 Fetch Redeemable Positions** - Queries **Polymarket's Data API** for positions that can be redeemed (resolved markets where you hold winning tokens)
+2. **📊 Group by Condition ID** - Aggregates positions by market condition for efficient batch processing
+3. **🔨 Build Redemption Transactions** - Creates **CTF redeem** or **NegRisk redeem** transactions based on market type
+4. **🚀 Submit via Gasless Relayer** - Submits transactions through **Polymarket's Builder Relayer API** — zero gas fees!
+5. **✅ Confirm on Polygon** - Waits for blockchain confirmation and logs results with **PolygonScan** links
 
-- **CTF (Conditional Tokens Framework)** - Binary markets with YES/NO outcomes
-- **Negative Risk** - Markets with negative risk positions
+### Supported Polymarket Position Types
+
+- **CTF Binary Markets** - Standard YES/NO prediction markets using the Conditional Tokens Framework (Gnosis CTF)
+- **Negative Risk Markets** - Multi-outcome markets with negative risk positions (e.g., "Who will win the election?")
 
 ### Architecture: Node.js vs Python
 
@@ -711,6 +736,58 @@ python redeem_cli.py --interval 15  # Redeem every 15 minutes
 
 ---
 
+## ❓ Frequently Asked Questions
+
+### How do I redeem my Polymarket winnings?
+
+Use this CLI tool to automatically redeem your winning positions. After a market resolves, run `npm run redeem` or `python redeem_cli.py --once` to claim your USDC. The tool uses Polymarket's gasless relayer, so you pay zero gas fees.
+
+### What is the Polymarket Redeem API?
+
+Polymarket uses the **Builder Relayer API** for gasless redemptions. This tool integrates with that API to submit redemption transactions on your behalf without requiring you to pay Polygon gas fees. The redemption converts your winning CTF (Conditional Token Framework) tokens back to USDC.
+
+### How do I automate Polymarket withdrawals?
+
+Use the Python CLI with the `--interval` flag:
+```bash
+python redeem_cli.py --interval 15  # Check and redeem every 15 minutes
+```
+This runs continuously and automatically redeems any winning positions as markets resolve.
+
+### Is this a Polymarket trading bot?
+
+This is specifically a **redemption bot**, not a trading bot. It automates the process of claiming winnings from resolved markets. It does not place trades, analyze markets, or execute trading strategies. For trading, see the official [Polymarket API documentation](https://docs.polymarket.com).
+
+### What are gasless transactions?
+
+Gasless transactions use Polymarket's **Builder Relayer** to submit transactions on your behalf. You don't need MATIC in your wallet — Polymarket pays the gas fees. This tool leverages this feature for zero-cost redemptions.
+
+### Does this work with all Polymarket markets?
+
+Yes! This tool supports:
+- **Binary markets** (YES/NO outcomes) using the CTF (Conditional Token Framework)
+- **Negative risk markets** with multiple outcomes
+- All markets that have resolved and have redeemable positions
+
+### How do I check my redeemable positions without redeeming?
+
+Use check mode to see what positions are available without actually redeeming:
+```bash
+npm run check
+# or
+python redeem_cli.py --check
+```
+
+### Is my private key safe?
+
+Yes, your credentials are encrypted with **AES-256-GCM** encryption and stored locally. The encryption key is derived from your password using PBKDF2. Your private key is never stored in plaintext or transmitted anywhere except to sign transactions locally.
+
+### What blockchain does this use?
+
+This tool operates on the **Polygon network** (MATIC). Polymarket uses Polygon for its prediction markets due to low transaction costs and fast confirmations.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -756,10 +833,20 @@ For issues related to:
 
 ## 📚 Additional Resources
 
-- [Polymarket Documentation](https://docs.polymarket.com)
-- [Builder Relayer Client](https://github.com/Polymarket/builder-relayer-client)
-- [Polygon Network](https://polygon.technology/)
-- [Viem Documentation](https://viem.sh/)
+### Polymarket API & Documentation
+- [Polymarket API Documentation](https://docs.polymarket.com) - Official API docs for trading and redemption
+- [Polymarket CTF Redeem Guide](https://docs.polymarket.com/developers/CTF/redeem) - How token redemption works
+- [Polymarket Builder API](https://docs.polymarket.com/developers/builder-sdk) - Builder/Relayer SDK documentation
+
+### Related Tools & Libraries
+- [Builder Relayer Client](https://github.com/Polymarket/builder-relayer-client) - Official Polymarket gasless transaction client
+- [Polymarket CLOB Client](https://github.com/Polymarket/py-clob-client) - Python client for Polymarket trading
+- [Conditional Tokens Framework](https://docs.gnosis.io/conditionaltokens/) - Gnosis CTF documentation
+
+### Blockchain & Development
+- [Polygon Network](https://polygon.technology/) - Layer 2 blockchain used by Polymarket
+- [PolygonScan](https://polygonscan.com/) - Polygon block explorer for transaction verification
+- [Viem Documentation](https://viem.sh/) - Modern TypeScript Ethereum library
 
 ---
 
@@ -792,5 +879,9 @@ For issues related to:
 **Made with ❤️ for the Polymarket community**
 
 ⭐ Star this repo if you find it useful!
+
+---
+
+**Related searches:** Polymarket redeem API, Polymarket trading bot, Polymarket CLI tool, Polymarket automation, Polymarket withdraw winnings, Polymarket claim positions, prediction market bot, Polygon gasless transactions, Polymarket Builder API, CTF token redemption, how to redeem Polymarket, Polymarket payout, Polymarket USDC withdrawal
 
 </div>
