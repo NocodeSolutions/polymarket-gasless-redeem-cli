@@ -98,12 +98,19 @@ The wizard will prompt you for:
 
 ## 🎯 Quick Start
 
-### Test Your Setup
+### Step 1: Setup Encrypted Keys (one-time)
 
-First, verify everything is configured correctly:
+```bash
+node redeem.js --setup
+```
+
+### Step 2: Test Your Setup
+
+Verify everything is configured correctly:
 
 ```bash
 python redeem_cli.py --check
+# or: node redeem.js --check
 ```
 
 This will:
@@ -112,12 +119,13 @@ This will:
 - ✅ Check for redeemable positions
 - ✅ Display results without redeeming
 
-### Run Your First Redemption
+### Step 3: Run Your First Redemption
 
 Once verified, run a one-time redemption:
 
 ```bash
 python redeem_cli.py --once
+# or: node redeem.js
 ```
 
 ---
@@ -468,21 +476,26 @@ This version includes significant security improvements:
 The system uses encrypted key storage instead of plain environment variables:
 
 ```bash
-# First-time setup
-npm run setup
-# or
+# First-time setup (Node.js - required once)
 node redeem.js --setup
-
-# Check positions (safe)
-npm run check
-# or
-node redeem.js --check
-
-# Redeem positions
-npm run redeem
-# or
-node redeem.js
 ```
+
+### Running Redemptions
+
+**Option 1: Node.js (one-time only)**
+```bash
+node redeem.js --check    # Check positions
+node redeem.js            # Redeem positions
+```
+
+**Option 2: Python CLI (supports intervals)**
+```bash
+python redeem_cli.py --check        # Check positions
+python redeem_cli.py --once         # Redeem once
+python redeem_cli.py --interval 15  # Redeem every 15 minutes
+```
+
+> 💡 **Tip**: Use **Python CLI** for scheduled/automatic redemption. Use **Node.js** for quick one-time operations.
 
 **Benefits:**
 - Keys are encrypted with AES-256-GCM
