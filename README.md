@@ -96,6 +96,14 @@ Run the secure setup wizard to store your credentials:
 node redeem.js --setup
 ```
 
+To reconfigure your keys (delete old ones and set up new ones):
+
+```bash
+node redeem.js --reset
+# or
+npm run reset
+```
+
 The wizard will prompt you for:
 
 | Prompt | What to Enter |
@@ -440,7 +448,7 @@ stdout_logfile=/var/log/polymarket-gasless-redeem-cli.out.log
 
 **Solution:**
 - Verify you're entering the correct encryption password
-- If you forgot your password, delete `.encrypted_keys` and run setup again
+- If you forgot your password or want to reconfigure, run `node redeem.js --reset` to delete old keys and set up new ones
 - Ensure the key file hasn't been modified or corrupted
 
 #### ❌ "Redemption script not found"
@@ -529,6 +537,9 @@ The system uses encrypted key storage instead of plain environment variables:
 ```bash
 # First-time setup (Node.js - required once)
 node redeem.js --setup
+
+# Reset/reconfigure keys
+node redeem.js --reset
 ```
 
 ### Running Redemptions

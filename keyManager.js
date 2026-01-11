@@ -193,6 +193,20 @@ class KeyManager {
   isSetup() {
     return fs.existsSync(this.keyFile);
   }
+
+  /**
+   * Reset/delete encrypted keys file
+   */
+  reset() {
+    if (fs.existsSync(this.keyFile)) {
+      fs.unlinkSync(this.keyFile);
+      console.log('[OK] Encrypted keys file deleted');
+      return true;
+    } else {
+      console.log('[INFO] No keys file found to delete');
+      return false;
+    }
+  }
 }
 
 export default new KeyManager();

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "setup": "node redeem.js --setup",
+    "reset": "node redeem.js --reset",
     "check": "node redeem.js --check",
     "redeem": "node redeem.js"
   },

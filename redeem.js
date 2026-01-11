@@ -194,9 +194,24 @@ function createNegRiskRedeemTx(conditionId, amounts) {
 async function main() {
   const checkOnly = process.argv.includes("--check");
   const setupMode = process.argv.includes("--setup");
+  const resetMode = process.argv.includes("--reset");
 
   console.log("Polymarket Gasless Redemption v2.0");
   console.log("=".repeat(50));
+
+  // Reset mode - delete existing keys and run setup
+  if (resetMode) {
+    try {
+      keyManager.reset();
+      console.log("\nRunning setup wizard...\n");
+      await keyManager.setupWizard();
+      console.log("\n[OK] Setup complete! You can now use --check or run redemptions.");
+      return { setup: true, reset: true };
+    } catch (error) {
+      console.error("[ERROR] Reset/Setup failed:", error.message);
+      process.exit(1);
+    }
+  }
 
   // Setup mode - initialize encrypted key storage
   if (setupMode) {
