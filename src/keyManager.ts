@@ -131,6 +131,62 @@ class KeyManager {
   }
 
   /**
+   * Ask a question with hidden input (for passwords)
+   * Shows asterisks instead of the actual characters
+   */
+  private askHidden(question: string): Promise<string> {
+    return new Promise((resolve) => {
+      const stdin = process.stdin;
+      const stdout = process.stdout;
+      
+      stdout.write(question);
+      
+      // Set raw mode to capture individual keystrokes
+      stdin.setRawMode(true);
+      stdin.resume();
+      stdin.setEncoding('utf8');
+      
+      let input = '';
+      
+      const onData = (char: string) => {
+        // Handle Enter key
+        if (char === '\r' || char === '\n') {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.removeListener('data', onData);
+          stdout.write('\n');
+          resolve(input);
+          return;
+        }
+        
+        // Handle Backspace (127) or Delete (8)
+        if (char === '\x7f' || char === '\b') {
+          if (input.length > 0) {
+            input = input.slice(0, -1);
+            stdout.write('\b \b');
+          }
+          return;
+        }
+        
+        // Handle Ctrl+C
+        if (char === '\x03') {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.removeListener('data', onData);
+          stdout.write('\n');
+          process.exit(0);
+        }
+        
+        // Add character to input and show asterisk
+        input += char;
+        stdout.write('*');
+      };
+      
+      stdin.on('data', onData);
+    });
+  }
+
+  /**
    * Setup wizard for first-time key storage
    */
   async setupWizard(): Promise<EncryptedKeys> {
@@ -147,8 +203,9 @@ class KeyManager {
       const apiPassphrase = await this.ask(rl, 'Enter your Builder API passphrase: ');
 
       console.log('\nPassword Protection Setup');
-      const password = await this.ask(rl, 'Create a password to encrypt your keys: ');
-      const confirmPassword = await this.ask(rl, 'Confirm password: ');
+      rl.close(); // Close readline before using raw mode for hidden input
+      const password = await this.askHidden('Create a password to encrypt your keys: ');
+      const confirmPassword = await this.askHidden('Confirm password: ');
 
       if (password !== confirmPassword) {
         throw new Error('Passwords do not match');
@@ -172,8 +229,9 @@ class KeyManager {
       console.log('Key file created:', this.keyFile);
 
       return keys;
-    } finally {
+    } catch (error) {
       rl.close();
+      throw error;
     }
   }
 
@@ -182,19 +240,8 @@ class KeyManager {
    */
   async getKeys(password: string | null = null): Promise<EncryptedKeys> {
     if (!password) {
-      const rl = this.createReadline();
-
-      return new Promise((resolve, reject) => {
-        rl.question('Enter your encryption password: ', (pwd) => {
-          rl.close();
-          try {
-            const keys = this.loadKeys(pwd);
-            resolve(keys);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      });
+      const pwd = await this.askHidden('Enter your encryption password: ');
+      return this.loadKeys(pwd);
     } else {
       return this.loadKeys(password);
     }
