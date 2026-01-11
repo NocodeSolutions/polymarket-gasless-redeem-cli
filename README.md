@@ -409,25 +409,66 @@ logging.basicConfig(
 
 ## 🔒 Security Considerations
 
+### 🔐 **Enhanced Security Features (v2.0)**
+
+This version includes significant security improvements:
+
+- **🔒 Encrypted Key Storage** - All sensitive data is encrypted with AES-256-GCM
+- **🛡️ Password Protection** - Keys are protected with PBKDF2-derived encryption keys
+- **✅ Input Validation** - All inputs are validated before processing
+- **🚦 Rate Limiting** - API calls are rate-limited to prevent abuse
+- **🔄 Retry Logic** - Automatic retry with exponential backoff for resilience
+- **📊 Structured Logging** - Secure logging without exposing sensitive data
+
 ### Best Practices
 
-- 🔐 **Never share your private key** or API credentials
-- 📁 **Use environment variables** - Never hardcode credentials
-- 🚫 **Never commit `.env`** - It should be in `.gitignore`
+- 🔐 **Never share your encryption password** or recovery keys
+- 🚫 **Never commit `.encrypted_keys`** - It should be in `.gitignore`
 - 🔍 **Start with `--check`** - Verify setup before redeeming
 - 📊 **Monitor logs** - Regularly check for unexpected behavior
-- 🔄 **Rotate credentials** - Change API keys periodically
-- 🛡️ **Use secure storage** - Consider using a password manager or secure vault
+- 🔄 **Rotate credentials** - Change API keys and passwords periodically
+- 🛡️ **Backup encrypted keys** - Store backups securely (password required to restore)
 - 👀 **Review transactions** - Check PolygonScan before running in automatic mode
+- 🔑 **Strong passwords** - Use complex passwords for key encryption
 
 ### Security Checklist
 
-- [ ] `.env` file is in `.gitignore`
-- [ ] Private key is never logged or printed
-- [ ] API credentials are stored securely
+- [ ] `.encrypted_keys` file is in `.gitignore`
+- [ ] Encryption password is strong and stored securely
+- [ ] Private keys are never logged or printed
+- [ ] API credentials are encrypted at rest
 - [ ] Service runs with minimal permissions
 - [ ] Logs don't contain sensitive information
 - [ ] Regular security updates applied
+- [ ] Keys are backed up securely
+
+### Key Management
+
+The system uses encrypted key storage instead of plain environment variables:
+
+```bash
+# First-time setup
+npm run setup
+# or
+node redeem.js --setup
+
+# Check positions (safe)
+npm run check
+# or
+node redeem.js --check
+
+# Redeem positions
+npm run redeem
+# or
+node redeem.js
+```
+
+**Benefits:**
+- Keys are encrypted with AES-256-GCM
+- Password-based access control
+- No plain-text credentials in files
+- Automatic key validation
+- Secure key rotation support
 
 ---
 

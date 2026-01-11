@@ -5,14 +5,17 @@
   "main": "redeem.js",
   "type": "module",
   "scripts": {
+    "setup": "node redeem.js --setup",
+    "check": "node redeem.js --check",
     "redeem": "node redeem.js",
-    "check": "node redeem.js --check"
+    "test": "node test_setup.js"
   },
   "dependencies": {
     "@polymarket/builder-relayer-client": "^0.0.8",
     "@polymarket/builder-signing-sdk": "^0.0.8",
     "dotenv": "^16.3.1",
-    "ethers": "^5.7.2"
+    "ethers": "^6.10.0",
+    "crypto": "^1.0.1"
   }
 }
 
