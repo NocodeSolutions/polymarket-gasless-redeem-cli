@@ -5,9 +5,7 @@ A standalone command-line tool for automatically redeeming Polymarket positions.
 
 import argparse
 import asyncio
-import json
 import os
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
@@ -16,16 +14,6 @@ from pathlib import Path
 # Get script directory
 SCRIPT_DIR = Path(__file__).parent.absolute()
 REDEMPTION_SCRIPT_PATH = SCRIPT_DIR / "src" / "redeem.ts"
-
-
-def output(event: str, **data):
-    """Output a JSON event to stdout."""
-    msg = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event": event,
-        **data
-    }
-    print(json.dumps(msg), flush=True)
 
 
 def load_env_file():
@@ -110,62 +98,15 @@ class RedemptionCLI:
                 "returncode": -1
             }
     
-    def _parse_output(self, raw_output: str) -> dict:
-        """Parse script output and extract key information."""
-        result = {
-            "conditions": 0,
-            "total_value": 0.0,
-            "redeemed": 0,
-            "transactions": []
-        }
-        
-        lines = raw_output.strip().split("\n")
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Parse condition count
-            if "condition(s) to redeem" in line:
-                match = re.search(r"Found (\d+) condition", line)
-                if match:
-                    result["conditions"] = int(match.group(1))
-            
-            # Parse total value
-            if "Total redeemable:" in line:
-                match = re.search(r"\$([0-9.]+)", line)
-                if match:
-                    result["total_value"] = float(match.group(1))
-            
-            # Parse redemption results
-            if "SUCCESS!" in line:
-                match = re.search(r"Tx: (0x[a-fA-F0-9]+)", line)
-                if match:
-                    result["transactions"].append(match.group(1))
-                    result["redeemed"] += 1
-            
-            # Parse completion
-            if "Redemption complete!" in line:
-                match = re.search(r"(\d+)/(\d+) successful", line)
-                if match:
-                    result["redeemed"] = int(match.group(1))
-        
-        return result
-    
     async def _run_redemption(self) -> dict:
         """Execute the Node.js redemption script."""
-        mode = "check" if self.check_only else "redeem"
-        
         if not REDEMPTION_SCRIPT_PATH.exists():
-            output("error", mode=mode, error="script_not_found", message=f"Redemption script not found at {REDEMPTION_SCRIPT_PATH}")
+            print(f"[ERROR] Redemption script not found at {REDEMPTION_SCRIPT_PATH}")
             return {"success": False, "error": "Script not found"}
         
         args = ["npx", "tsx", "src/redeem.ts"]
         if self.check_only:
             args.append("--check")
-        
-        output("start", mode=mode)
         
         try:
             result_data = await asyncio.wait_for(
@@ -173,41 +114,23 @@ class RedemptionCLI:
                 timeout=120
             )
             
-            raw_output = result_data["output"]
+            output = result_data["output"]
             returncode = result_data["returncode"]
             
-            # Parse results
-            result = self._parse_output(raw_output)
-            result["exit_code"] = returncode
-            result["success"] = returncode == 0
-            result["mode"] = mode
-            result["raw_output"] = raw_output.strip()
+            # Print the Node.js script output directly (same format)
+            if output.strip():
+                print(output.strip())
             
-            if result["success"]:
-                output("result",
-                    mode=mode,
-                    success=True,
-                    positions=result["conditions"],
-                    total_value=result["total_value"],
-                    redeemed=result["redeemed"],
-                    transactions=result["transactions"]
-                )
-            else:
-                output("error",
-                    mode=mode,
-                    success=False,
-                    exit_code=returncode,
-                    error="script_failed",
-                    raw_output=raw_output.strip()
-                )
-            
-            return result
+            return {
+                "success": returncode == 0,
+                "exit_code": returncode
+            }
             
         except asyncio.TimeoutError:
-            output("error", mode=mode, error="timeout", message="Redemption script timed out")
+            print("[ERROR] Redemption script timed out")
             return {"success": False, "error": "Timeout"}
         except Exception as e:
-            output("error", mode=mode, error="exception", message=str(e))
+            print(f"[ERROR] Failed to run redemption script: {e}")
             return {"success": False, "error": str(e)}
     
     async def _run_loop(self):
@@ -225,7 +148,8 @@ class RedemptionCLI:
             try:
                 # Set next run time
                 self._next_run_at = datetime.now(timezone.utc) + timedelta(seconds=interval_seconds)
-                output("scheduled", next_run=self._next_run_at.isoformat(), interval_minutes=self.interval_minutes)
+                print(f"\nNext run scheduled in {self.interval_minutes} minute(s)...")
+                print("-" * 55)
                 
                 await asyncio.sleep(interval_seconds)
                 
@@ -235,7 +159,7 @@ class RedemptionCLI:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                output("error", error="loop_error", message=str(e))
+                print(f"[ERROR] Error in redemption loop: {e}")
                 # Wait a minute before retrying
                 await asyncio.sleep(60)
     
@@ -248,7 +172,6 @@ class RedemptionCLI:
             # Continuous loop
             self._stop.clear()
             self._task = asyncio.create_task(self._run_loop())
-            output("started", mode="continuous", interval_minutes=self.interval_minutes)
             try:
                 await self._task
             except asyncio.CancelledError:
@@ -263,14 +186,17 @@ class RedemptionCLI:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        output("stopped")
+        print("\nRedemption CLI stopped.")
 
 
 def check_key_setup():
     """Check if encrypted keys have been set up."""
     key_file = SCRIPT_DIR / ".encrypted_keys"
     if not key_file.exists():
-        output("error", error="keys_not_configured", message="Encrypted keys not configured. Run: npx tsx src/redeem.ts --setup")
+        print("[ERROR] Encrypted keys not configured.")
+        print("\nPlease run key setup first:")
+        print("  npx tsx src/redeem.ts --setup")
+        print("\nThis will securely store your wallet credentials.")
         sys.exit(1)
 
 
@@ -278,12 +204,10 @@ def prompt_password() -> str:
     """Prompt user for encryption password."""
     import getpass
     try:
-        # Password prompt goes to stderr so it doesn't mix with JSON output
-        print("Enter encryption password: ", file=sys.stderr, end="", flush=True)
-        password = getpass.getpass("")
+        password = getpass.getpass("Enter encryption password: ")
         return password
     except (KeyboardInterrupt, EOFError):
-        output("cancelled")
+        print("\nCancelled.")
         sys.exit(0)
 
 
@@ -341,7 +265,7 @@ For more information, see README.md
     # Determine mode
     if args.interval is not None:
         if args.interval < 1:
-            output("error", error="invalid_interval", message="Interval must be at least 1 minute")
+            print("[ERROR] Interval must be at least 1 minute")
             sys.exit(1)
         interval_minutes = args.interval
     else:
@@ -362,12 +286,13 @@ For more information, see README.md
         if result.returncode != 0:
             raise FileNotFoundError
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        output("error", error="node_not_found", message="Node.js is not installed or not in PATH")
+        print("[ERROR] Node.js is not installed or not in PATH")
+        print("Please install Node.js from https://nodejs.org/")
         sys.exit(1)
     
     # Check if redeem.ts exists
     if not REDEMPTION_SCRIPT_PATH.exists():
-        output("error", error="script_not_found", message=f"Redemption script not found at {REDEMPTION_SCRIPT_PATH}")
+        print(f"[ERROR] Redemption script not found at {REDEMPTION_SCRIPT_PATH}")
         sys.exit(1)
     
     # Prompt for password (required for automated operation)
@@ -386,7 +311,7 @@ For more information, see README.md
     try:
         asyncio.run(cli.start())
     except KeyboardInterrupt:
-        output("interrupted")
+        print("\nStopping...")
         asyncio.run(cli.stop())
 
 
