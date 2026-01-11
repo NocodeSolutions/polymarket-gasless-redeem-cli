@@ -1,6 +1,6 @@
 # 🔄 Polymarket Gasless Redeem CLI
 
-> A standalone command-line tool for automatically redeeming Polymarket positions using gasless transactions. Never pay gas fees again!
+> A standalone command-line tool for automatically redeeming Polymarket positions using gasless transactions.
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
