@@ -11,7 +11,6 @@
 - The code has been developed based on public Polymarket documentation and APIs, but has not been officially reviewed or approved by Polymarket
 - API endpoints, authentication methods, or transaction formats may change, potentially breaking this tool
 - While the code includes security measures (encrypted key storage, input validation, rate limiting), users should review the code before use
-- The author hopes that Polymarket developers will review this code and approve it for safe use by the community
 
 **Use at your own risk.** The author is not responsible for any issues, data loss, failed transactions, or problems arising from the use of this library. Always verify transactions on PolygonScan and test with small amounts first.
 
