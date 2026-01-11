@@ -49,7 +49,7 @@ Before you begin, ensure you have the following installed:
 
 ### Getting Your Credentials
 
-1. **Polymarket Builder API**: Get your API credentials from your [Polymarket Builder account](https://polymarket.com/builder)
+1. **Polymarket Builder API**: Get your API credentials from [Polymarket Settings → Builder Codes](https://polymarket.com/settings?tab=builder)
 2. **Proxy Wallet Address**: This is your Polymarket proxy wallet address (Funder Address)
 3. **Private Key**: Your wallet's private key (keep this secure!)
 
