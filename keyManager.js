@@ -116,7 +116,7 @@ class KeyManager {
 
       (async () => {
         try {
-          console.log('🔐 Secure Key Setup Wizard');
+          console.log('Secure Key Setup Wizard');
           console.log('==========================');
 
           const privateKey = await ask('Enter your wallet private key: ');
@@ -125,7 +125,7 @@ class KeyManager {
           const apiSecret = await ask('Enter your Builder API secret: ');
           const apiPassphrase = await ask('Enter your Builder API passphrase: ');
 
-          console.log('\n🔑 Password Protection Setup');
+          console.log('\nPassword Protection Setup');
           const password = await ask('Create a password to encrypt your keys: ');
           const confirmPassword = await ask('Confirm password: ');
 
@@ -147,8 +147,8 @@ class KeyManager {
 
           this.storeKeys(keys, password);
 
-          console.log('✅ Keys encrypted and stored securely!');
-          console.log('🔒 Key file created:', this.keyFile);
+          console.log('[OK] Keys encrypted and stored securely!');
+          console.log('Key file created:', this.keyFile);
 
           rl.close();
           resolve(keys);

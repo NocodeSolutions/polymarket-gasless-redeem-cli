@@ -88,6 +88,8 @@ class RedemptionCLI:
                 cwd=SCRIPT_DIR,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 env={**os.environ},
                 timeout=115
             )

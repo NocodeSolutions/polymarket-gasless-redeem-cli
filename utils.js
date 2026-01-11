@@ -22,7 +22,7 @@ export async function retryWithBackoff(
       lastError = error;
 
       if (attempt === maxRetries) {
-        console.error(`❌ ${description} failed after ${maxRetries + 1} attempts`);
+        console.error(`[ERROR] ${description} failed after ${maxRetries + 1} attempts`);
         throw error;
       }
 
@@ -31,7 +31,7 @@ export async function retryWithBackoff(
         CONFIG.api.maxBackoffTime
       );
 
-      console.warn(`⚠️  ${description} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+      console.warn(`[WARN] ${description} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
       console.warn(`   Error: ${error.message}`);
 
       await new Promise(resolve => setTimeout(resolve, delay));

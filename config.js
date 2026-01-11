@@ -93,7 +93,7 @@ export function validateConfig() {
     throw new Error('Requests per minute must be positive');
   }
 
-  console.log('✅ Configuration validated');
+  console.log('[OK] Configuration validated');
 }
 
 /**

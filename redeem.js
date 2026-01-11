@@ -24,7 +24,7 @@ loadEnvironmentOverrides();
 try {
   validateConfig();
 } catch (error) {
-  console.error('❌ Configuration error:', error.message);
+  console.error('[ERROR] Configuration error:', error.message);
   process.exit(1);
 }
 
@@ -195,22 +195,22 @@ async function main() {
   const checkOnly = process.argv.includes("--check");
   const setupMode = process.argv.includes("--setup");
 
-  console.log("🔐 Polymarket Gasless Redemption v2.0");
+  console.log("Polymarket Gasless Redemption v2.0");
   console.log("=".repeat(50));
 
   // Setup mode - initialize encrypted key storage
   if (setupMode) {
     try {
       if (keyManager.isSetup()) {
-        console.log("⚠️  Keys are already set up. Use --reset to reconfigure.");
+        console.log("[WARNING] Keys are already set up. Use --reset to reconfigure.");
         return { setup: false, message: "Already configured" };
       }
 
       await keyManager.setupWizard();
-      console.log("\n✅ Setup complete! You can now use --check or run redemptions.");
+      console.log("\n[OK] Setup complete! You can now use --check or run redemptions.");
       return { setup: true };
     } catch (error) {
-      console.error("❌ Setup failed:", error.message);
+      console.error("[ERROR] Setup failed:", error.message);
       process.exit(1);
     }
   }
@@ -219,7 +219,7 @@ async function main() {
   let keys;
   try {
     if (!keyManager.isSetup()) {
-      console.log("❌ Keys not configured. Run with --setup first.");
+      console.log("[ERROR] Keys not configured. Run with --setup first.");
       console.log("   Example: node redeem.js --setup");
       process.exit(1);
     }
@@ -227,18 +227,18 @@ async function main() {
     keys = await keyManager.getKeys();
     logger.info("Keys loaded successfully");
   } catch (error) {
-    console.error("❌ Failed to load keys:", error.message);
+    console.error("[ERROR] Failed to load keys:", error.message);
     process.exit(1);
   }
 
   // Validate loaded keys
   if (!validators.isValidPrivateKey(keys.privateKey)) {
-    console.error("❌ Invalid private key format");
+    console.error("[ERROR] Invalid private key format");
     process.exit(1);
   }
 
   if (!validators.isValidAddress(keys.funderAddress)) {
-    console.error("❌ Invalid funder address format");
+    console.error("[ERROR] Invalid funder address format");
     process.exit(1);
   }
 
@@ -252,29 +252,29 @@ async function main() {
     await wallet.getAddress();
     logger.info("Wallet initialized", { address: wallet.address });
   } catch (error) {
-    console.error("❌ Failed to initialize wallet:", error.message);
+    console.error("[ERROR] Failed to initialize wallet:", error.message);
     process.exit(1);
   }
 
-  console.log(`👤 EOA: ${wallet.address}`);
-  console.log(`🏦 Proxy Wallet: ${keys.funderAddress}`);
+  console.log(`EOA: ${wallet.address}`);
+  console.log(`Proxy Wallet: ${keys.funderAddress}`);
 
   // Get redeemable positions with retry logic
-  console.log("\n🔍 Fetching redeemable positions...");
+  console.log("\nFetching redeemable positions...");
   let positions;
   try {
     positions = await getRedeemablePositions(keys.funderAddress);
   } catch (error) {
-    console.error("❌ Failed to fetch positions:", error.message);
+    console.error("[ERROR] Failed to fetch positions:", error.message);
     process.exit(1);
   }
 
   if (positions.length === 0) {
-    console.log("ℹ️  No redeemable positions found.");
+    console.log("No redeemable positions found.");
     return { redeemed: 0, total: 0 };
   }
 
-  console.log(`📊 Found ${positions.length} condition(s) to redeem:\n`);
+  console.log(`Found ${positions.length} condition(s) to redeem:\n`);
 
   let totalValue = 0;
   for (let i = 0; i < positions.length; i++) {
@@ -283,22 +283,22 @@ async function main() {
 
     console.log(`${i + 1}. ${title}`);
     for (const outcome of pos.outcomes) {
-      const status = outcome.value > 0 ? "🏆 WIN" : "❌ LOSE";
+      const status = outcome.value > 0 ? "[WIN]" : "[LOSE]";
       console.log(`   ${outcome.outcome}: Size ${formatCurrency(outcome.size)}, Value $${formatCurrency(outcome.value)} ${status}`);
     }
-    console.log(`   💰 Condition Value: $${formatCurrency(pos.totalValue)}`);
+    console.log(`   Condition Value: $${formatCurrency(pos.totalValue)}`);
     totalValue += pos.totalValue;
   }
 
-  console.log(`\n💵 Total redeemable: $${formatCurrency(totalValue)}`);
+  console.log(`\nTotal redeemable: $${formatCurrency(totalValue)}`);
 
   if (checkOnly) {
-    console.log("\n🔍 Check mode - not redeeming");
+    console.log("\n(Check mode - not redeeming)");
     return { redeemed: 0, total: positions.length, checkOnly: true };
   }
 
   // Initialize RelayClient with enhanced error handling
-  console.log("\n🚀 Initializing gasless relayer...");
+  console.log("\nInitializing gasless relayer...");
 
   let client;
   try {
@@ -319,9 +319,9 @@ async function main() {
     );
 
     logger.info("Relayer client initialized");
-    console.log("✅ Relayer ready\n");
+    console.log("[OK] Relayer ready\n");
   } catch (error) {
-    console.error("❌ Failed to initialize relayer:", error.message);
+    console.error("[ERROR] Failed to initialize relayer:", error.message);
     process.exit(1);
   }
 
@@ -334,7 +334,7 @@ async function main() {
     const title = (pos.title || "Unknown Market").substring(0, 30);
 
     console.log(`${i + 1}/${positions.length}. Redeeming: ${title}`);
-    console.log(`   💰 Value: $${formatCurrency(pos.totalValue)}`);
+    console.log(`   Value: $${formatCurrency(pos.totalValue)}`);
 
     // Use semaphore for concurrency control
     await semaphore.acquire();
@@ -347,11 +347,11 @@ async function main() {
           // For negative risk markets, calculate amounts for each outcome
           const amounts = pos.outcomes.map(o => Math.floor(o.size * 1e6));
           tx = createNegRiskRedeemTx(pos.conditionId, amounts);
-          console.log(`   🔄 NegRisk redeem, amounts: [${amounts.join(', ')}]`);
+          console.log(`   NegRisk redeem, amounts: [${amounts.join(', ')}]`);
         } else {
           // CTF binary: redeem both outcomes at once
           tx = createCtfRedeemTx(pos.conditionId);
-          console.log(`   🔄 CTF redeem (both outcomes)`);
+          console.log(`   CTF redeem (both outcomes)`);
         }
 
         // Execute via relayer with timeout
@@ -362,7 +362,7 @@ async function main() {
         );
 
         const response = await executeWithTimeout;
-        console.log(`   ⏳ Submitted, waiting for confirmation...`);
+        console.log(`   Submitted, waiting for confirmation...`);
 
         const result = await response.wait();
         logger.debug('Transaction result', result);
@@ -371,23 +371,25 @@ async function main() {
           const txUrl = `https://polygonscan.com/tx/${result.transactionHash}`;
 
           if (result.state === "STATE_FAILED") {
-            console.log(`   ❌ FAILED ON-CHAIN! ${txUrl}`);
+            console.log(`   FAILED ON-CHAIN! Tx: ${result.transactionHash}`);
+            console.log(`   ${txUrl}`);
             return { success: false, txHash: result.transactionHash, url: txUrl };
           } else {
-            console.log(`   ✅ SUCCESS! ${txUrl}`);
+            console.log(`   SUCCESS! Tx: ${result.transactionHash}`);
+            console.log(`   ${txUrl}`);
             return { success: true, txHash: result.transactionHash, url: txUrl };
           }
         } else {
-          console.log(`   ❌ FAILED - no transaction hash returned`);
+          console.log(`   FAILED - no transaction hash returned`);
           return { success: false, error: 'No transaction hash' };
         }
 
       } catch (error) {
         const errorMsg = error.message || 'Unknown error';
-        console.log(`   ❌ ERROR: ${errorMsg}`);
+        console.log(`   ERROR: ${errorMsg}`);
 
         if (error.transactionHash) {
-          console.log(`   🔗 Tx: https://polygonscan.com/tx/${error.transactionHash}`);
+          console.log(`   Tx: https://polygonscan.com/tx/${error.transactionHash}`);
         }
 
         logger.error('Redemption failed', { error: errorMsg, conditionId: pos.conditionId });
@@ -410,12 +412,12 @@ async function main() {
   const successCount = redemptionResults.filter(r => r.success).length;
 
   console.log(`\n${"=".repeat(50)}`);
-  console.log(`🎉 Redemption complete! ${successCount}/${positions.length} successful`);
+  console.log(`Redemption complete! ${successCount}/${positions.length} successful`);
 
   // Log successful transactions
   const successfulTxs = redemptionResults.filter(r => r.success && r.txHash);
   if (successfulTxs.length > 0) {
-    console.log("\n📋 Successful transactions:");
+    console.log("\nSuccessful transactions:");
     successfulTxs.forEach((result, index) => {
       console.log(`   ${index + 1}. ${result.url}`);
     });
@@ -489,7 +491,7 @@ main()
   })
   .catch(error => {
     logger.error("Fatal error in main function", { error: error.message });
-    console.error("💥 Fatal error:", error.message);
+    console.error("Fatal error:", error.message);
     setTimeout(() => process.exit(1), 100);
   });
 

@@ -74,7 +74,7 @@ export class RateLimiter {
   async waitForNextRequest() {
     const waitTime = this.getTimeUntilNextRequest();
     if (waitTime > 0) {
-      console.log(`⏳ Rate limit reached, waiting ${Math.ceil(waitTime / 1000)}s...`);
+      console.log(`Rate limit reached, waiting ${Math.ceil(waitTime / 1000)}s...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
