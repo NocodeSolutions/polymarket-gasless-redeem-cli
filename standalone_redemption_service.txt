@@ -1,0 +1,925 @@
+================================================================================
+POLYMARKET GASLESS REDEMPTION SERVICE - STANDALONE CLI
+================================================================================
+
+A command-line service for automatically redeeming Polymarket positions using
+gasless transactions. Supports both automatic periodic redemption and manual
+one-time execution.
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+polymarket-redemption-service/
+├── redeem_cli.py          # Main Python CLI script
+├── redeem.js              # Node.js redemption script
+├── package.json           # Node.js dependencies
+├── requirements.txt       # Python dependencies
+├── README.md              # Setup and usage instructions
+└── .env.example           # Environment variables template
+
+================================================================================
+1. redeem_cli.py - Main CLI Script
+================================================================================
+
+"""
+Polymarket Gasless Redemption CLI Service
+A standalone command-line tool for automatically redeeming Polymarket positions.
+"""
+
+import argparse
+import asyncio
+import logging
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+log = logging.getLogger("redemption_cli")
+
+# Get script directory
+SCRIPT_DIR = Path(__file__).parent.absolute()
+REDEMPTION_SCRIPT_PATH = SCRIPT_DIR / "redeem.js"
+
+
+class RedemptionCLI:
+    """Command-line interface for Polymarket redemption service."""
+    
+    def __init__(self, interval_minutes: int = None, check_only: bool = False):
+        """
+        Initialize the redemption CLI.
+        
+        Args:
+            interval_minutes: Interval in minutes for automatic redemption (None = one-time)
+            check_only: If True, only check for redeemable positions without redeeming
+        """
+        self.interval_minutes = interval_minutes
+        self.check_only = check_only
+        self._stop = asyncio.Event()
+        self._task = None
+        self._next_run_at = None
+        self._last_run_at = None
+    
+    def log(self, message: str, level: str = "INFO"):
+        """Log a message with timestamp."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] {message}")
+        if level == "ERROR":
+            log.error(message)
+        elif level == "WARNING":
+            log.warning(message)
+        else:
+            log.info(message)
+    
+    def _run_subprocess_sync(self, args: list) -> dict:
+        """Run subprocess synchronously (called in a thread)."""
+        try:
+            result = subprocess.run(
+                args,
+                cwd=SCRIPT_DIR,
+                capture_output=True,
+                text=True,
+                env={**os.environ},
+                timeout=115
+            )
+            return {
+                "output": result.stdout + result.stderr,
+                "returncode": result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "output": "Script timed out",
+                "returncode": -1
+            }
+        except Exception as e:
+            return {
+                "output": str(e),
+                "returncode": -1
+            }
+    
+    def _parse_output(self, output: str) -> dict:
+        """Parse script output and extract key information."""
+        result = {
+            "conditions": 0,
+            "total_value": 0.0,
+            "redeemed": 0,
+            "transactions": []
+        }
+        
+        lines = output.strip().split("\n")
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Parse condition count
+            if "condition(s) to redeem" in line:
+                match = re.search(r"Found (\d+) condition", line)
+                if match:
+                    result["conditions"] = int(match.group(1))
+            
+            # Parse total value
+            if "Total redeemable:" in line:
+                match = re.search(r"\$([0-9.]+)", line)
+                if match:
+                    result["total_value"] = float(match.group(1))
+            
+            # Parse redemption results
+            if "SUCCESS!" in line:
+                match = re.search(r"Tx: (0x[a-fA-F0-9]+)", line)
+                if match:
+                    result["transactions"].append(match.group(1))
+                    result["redeemed"] += 1
+            
+            # Parse completion
+            if "Redemption complete!" in line:
+                match = re.search(r"(\d+)/(\d+) successful", line)
+                if match:
+                    result["redeemed"] = int(match.group(1))
+        
+        return result
+    
+    async def _run_redemption(self) -> dict:
+        """Execute the Node.js redemption script."""
+        if not REDEMPTION_SCRIPT_PATH.exists():
+            error_msg = f"Redemption script not found at {REDEMPTION_SCRIPT_PATH}"
+            self.log(error_msg, "ERROR")
+            return {"success": False, "error": "Script not found"}
+        
+        args = ["node", "redeem.js"]
+        if self.check_only:
+            args.append("--check")
+        
+        action = "check" if self.check_only else "redemption"
+        self.log(f"Starting {action}...")
+        
+        try:
+            result_data = await asyncio.wait_for(
+                asyncio.to_thread(self._run_subprocess_sync, args),
+                timeout=120
+            )
+            
+            output = result_data["output"]
+            returncode = result_data["returncode"]
+            
+            # Print output
+            print(output)
+            
+            # Parse results
+            result = self._parse_output(output)
+            result["exit_code"] = returncode
+            result["success"] = returncode == 0
+            
+            if result["success"]:
+                if result["conditions"] > 0:
+                    self.log(f"Found {result['conditions']} position(s) to redeem")
+                    if result["total_value"] > 0:
+                        self.log(f"Total value: ${result['total_value']:.4f}")
+                    if not self.check_only and result["redeemed"] > 0:
+                        self.log(f"Successfully redeemed {result['redeemed']} position(s)")
+                else:
+                    self.log("No redeemable positions found")
+            else:
+                self.log(f"Redemption failed with exit code {returncode}", "ERROR")
+            
+            return result
+            
+        except asyncio.TimeoutError:
+            self.log("Redemption script timed out", "ERROR")
+            return {"success": False, "error": "Timeout"}
+        except Exception as e:
+            self.log(f"Failed to run redemption script: {e}", "ERROR")
+            return {"success": False, "error": str(e)}
+    
+    async def _run_loop(self):
+        """Main loop that runs redemption periodically."""
+        # Run immediately on start
+        self._last_run_at = datetime.now(timezone.utc)
+        await self._run_redemption()
+        
+        if self.interval_minutes is None:
+            return
+        
+        # Then run every interval_minutes
+        interval_seconds = self.interval_minutes * 60
+        while not self._stop.is_set():
+            try:
+                # Set next run time
+                self._next_run_at = datetime.now(timezone.utc) + timedelta(seconds=interval_seconds)
+                self.log(f"Next redemption scheduled in {self.interval_minutes} minute(s)")
+                
+                await asyncio.sleep(interval_seconds)
+                
+                if not self._stop.is_set():
+                    self._last_run_at = datetime.now(timezone.utc)
+                    await self._run_redemption()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.log(f"Error in redemption loop: {e}", "ERROR")
+                # Wait a minute before retrying
+                await asyncio.sleep(60)
+    
+    async def start(self):
+        """Start the redemption service."""
+        if self.interval_minutes is None:
+            # One-time execution
+            await self._run_redemption()
+        else:
+            # Continuous loop
+            self._stop.clear()
+            self._task = asyncio.create_task(self._run_loop())
+            self.log(f"Redemption service started (interval: {self.interval_minutes} minute(s))")
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+    
+    async def stop(self):
+        """Stop the redemption service."""
+        self._stop.set()
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self.log("Redemption service stopped")
+
+
+def validate_environment():
+    """Validate that required environment variables are set."""
+    required_vars = [
+        "PRIVATE_KEY",
+        "FUNDER_ADDRESS",
+        "POLY_BUILDER_API_KEY",
+        "POLY_BUILDER_SECRET",
+        "POLY_BUILDER_PASSPHRASE"
+    ]
+    
+    missing = []
+    for var in required_vars:
+        if not os.environ.get(var):
+            missing.append(var)
+    
+    if missing:
+        print("ERROR: Missing required environment variables:")
+        for var in missing:
+            print(f"  - {var}")
+        print("\nPlease set these in your .env file or environment.")
+        print("See .env.example for reference.")
+        sys.exit(1)
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Polymarket Gasless Redemption Service",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # One-time redemption
+  python redeem_cli.py --once
+
+  # One-time check (no redemption)
+  python redeem_cli.py --check
+
+  # Automatic redemption every 15 minutes
+  python redeem_cli.py --interval 15
+
+  # Automatic redemption every hour
+  python redeem_cli.py --interval 60
+
+Environment Variables:
+  PRIVATE_KEY              - Your wallet private key
+  FUNDER_ADDRESS           - Your Polymarket proxy wallet address
+  POLY_BUILDER_API_KEY     - Polymarket Builder API key
+  POLY_BUILDER_SECRET      - Polymarket Builder API secret
+  POLY_BUILDER_PASSPHRASE  - Polymarket Builder API passphrase
+
+For more information, see README.md
+        """
+    )
+    
+    parser.add_argument(
+        "--interval",
+        type=int,
+        metavar="MINUTES",
+        help="Run redemption automatically every N minutes (e.g., --interval 15)"
+    )
+    
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run redemption once and exit (default if --interval not specified)"
+    )
+    
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Only check for redeemable positions, don't actually redeem"
+    )
+    
+    args = parser.parse_args()
+    
+    # Determine mode
+    if args.interval is not None:
+        if args.interval < 1:
+            print("ERROR: Interval must be at least 1 minute")
+            sys.exit(1)
+        interval_minutes = args.interval
+    else:
+        interval_minutes = None
+    
+    # Validate environment
+    validate_environment()
+    
+    # Check if Node.js is available
+    try:
+        result = subprocess.run(
+            ["node", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            raise FileNotFoundError
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print("ERROR: Node.js is not installed or not in PATH")
+        print("Please install Node.js from https://nodejs.org/")
+        sys.exit(1)
+    
+    # Check if redeem.js exists
+    if not REDEMPTION_SCRIPT_PATH.exists():
+        print(f"ERROR: Redemption script not found at {REDEMPTION_SCRIPT_PATH}")
+        print("Please ensure redeem.js is in the same directory as redeem_cli.py")
+        sys.exit(1)
+    
+    # Create and run CLI
+    cli = RedemptionCLI(
+        interval_minutes=interval_minutes,
+        check_only=args.check
+    )
+    
+    try:
+        if interval_minutes is None:
+            print("Running one-time redemption...")
+        else:
+            print(f"Starting automatic redemption service (interval: {interval_minutes} minute(s))")
+            print("Press Ctrl+C to stop")
+        
+        asyncio.run(cli.start())
+    except KeyboardInterrupt:
+        print("\nStopping redemption service...")
+        asyncio.run(cli.stop())
+        print("Service stopped.")
+
+
+if __name__ == "__main__":
+    main()
+
+
+================================================================================
+2. redeem.js - Node.js Redemption Script
+================================================================================
+
+/**
+ * Polymarket Gasless Redemption Script
+ * Uses official @polymarket/builder-relayer-client for gasless transactions
+ * 
+ * Usage:
+ *   node redeem.js          # Redeem all positions
+ *   node redeem.js --check  # Just check, don't redeem
+ */
+
+import { ethers } from "ethers";
+import { RelayClient, RelayerTxType } from "@polymarket/builder-relayer-client";
+import { BuilderConfig } from "@polymarket/builder-signing-sdk";
+import dotenv from "dotenv";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load .env - try current directory first, then parent directory
+const envPaths = [
+  resolve(__dirname, ".env"),
+  resolve(__dirname, "../.env")
+];
+
+for (const envPath of envPaths) {
+  const result = dotenv.config({ path: envPath });
+  if (!result.error) {
+    break;
+  }
+}
+
+// Constants
+const RELAYER_URL = "https://relayer-v2.polymarket.com";
+const CHAIN_ID = 137;
+const DATA_API = "https://data-api.polymarket.com";
+
+const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+const NEG_RISK_ADAPTER = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296";
+
+// ABIs
+const CTF_REDEEM_ABI = [
+  "function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)"
+];
+
+const NEG_RISK_REDEEM_ABI = [
+  "function redeemPositions(bytes32 conditionId, uint256[] amounts)"
+];
+
+/**
+ * Fetch redeemable positions from Data API
+ */
+async function getRedeemablePositions(walletAddress) {
+  const url = `${DATA_API}/positions?user=${walletAddress}&sizeThreshold=0.01&redeemable=true&limit=100&offset=0`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Data API error: ${response.status}`);
+  }
+  
+  const positions = await response.json();
+  
+  // Group by conditionId - aggregate both outcomes for display and redemption
+  const byCondition = new Map();
+  for (const pos of positions) {
+    const cid = pos.conditionId;
+    if (!byCondition.has(cid)) {
+      byCondition.set(cid, {
+        conditionId: cid,
+        title: pos.title,
+        negativeRisk: pos.negativeRisk || false,
+        outcomes: [],
+        totalValue: 0,
+        totalSize: 0
+      });
+    }
+    const group = byCondition.get(cid);
+    group.outcomes.push({
+      outcome: pos.outcome,
+      outcomeIndex: pos.outcomeIndex,
+      size: pos.size || 0,
+      value: pos.currentValue || 0
+    });
+    group.totalValue += pos.currentValue || 0;
+    group.totalSize += pos.size || 0;
+  }
+  
+  return Array.from(byCondition.values());
+}
+
+/**
+ * Create CTF redeem transaction
+ */
+function createCtfRedeemTx(conditionId) {
+  const iface = new ethers.utils.Interface(CTF_REDEEM_ABI);
+  const data = iface.encodeFunctionData("redeemPositions", [
+    USDC_ADDRESS,
+    ethers.constants.HashZero,
+    conditionId,
+    [1, 2]
+  ]);
+  
+  return {
+    to: CTF_ADDRESS,
+    data: data,
+    value: "0"
+  };
+}
+
+/**
+ * Create NegRisk redeem transaction
+ */
+function createNegRiskRedeemTx(conditionId, amounts) {
+  const iface = new ethers.utils.Interface(NEG_RISK_REDEEM_ABI);
+  const data = iface.encodeFunctionData("redeemPositions", [
+    conditionId,
+    amounts
+  ]);
+  
+  return {
+    to: NEG_RISK_ADAPTER,
+    data: data,
+    value: "0"
+  };
+}
+
+/**
+ * Main redemption function
+ */
+async function main() {
+  const checkOnly = process.argv.includes("--check");
+  
+  console.log("=".repeat(50));
+  console.log("Polymarket Gasless Redemption");
+  console.log("=".repeat(50));
+  
+  // Validate environment
+  const privateKey = process.env.PRIVATE_KEY;
+  const funderAddress = process.env.FUNDER_ADDRESS;
+  const builderKey = process.env.POLY_BUILDER_API_KEY;
+  const builderSecret = process.env.POLY_BUILDER_SECRET;
+  const builderPassphrase = process.env.POLY_BUILDER_PASSPHRASE;
+  
+  if (!privateKey) throw new Error("PRIVATE_KEY not set in .env");
+  if (!funderAddress) throw new Error("FUNDER_ADDRESS not set in .env");
+  if (!builderKey || !builderSecret || !builderPassphrase) {
+    throw new Error("Builder API credentials not set in .env");
+  }
+  
+  // Initialize wallet with Polygon provider
+  const provider = new ethers.providers.JsonRpcProvider("https://polygon-rpc.com");
+  const wallet = new ethers.Wallet(privateKey, provider);
+  console.log(`EOA: ${wallet.address}`);
+  console.log(`Proxy Wallet: ${funderAddress}`);
+  
+  // Get redeemable positions
+  console.log("\nFetching redeemable positions...");
+  const positions = await getRedeemablePositions(funderAddress);
+  
+  if (positions.length === 0) {
+    console.log("No redeemable positions found.");
+    return { redeemed: 0, total: 0 };
+  }
+  
+  console.log(`Found ${positions.length} condition(s) to redeem:\n`);
+  
+  let totalValue = 0;
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
+    const title = (pos.title || "Unknown").substring(0, 50);
+    
+    console.log(`${i + 1}. ${title}...`);
+    for (const outcome of pos.outcomes) {
+      const status = outcome.value > 0 ? "WIN" : "LOSE";
+      console.log(`   ${outcome.outcome}: Size ${outcome.size.toFixed(4)}, Value $${outcome.value.toFixed(4)} [${status}]`);
+    }
+    console.log(`   Condition Value: $${pos.totalValue.toFixed(4)}`);
+    totalValue += pos.totalValue;
+  }
+  
+  console.log(`\nTotal redeemable: ~$${totalValue.toFixed(4)}`);
+  
+  if (checkOnly) {
+    console.log("\n(Check mode - not redeeming)");
+    return { redeemed: 0, total: positions.length };
+  }
+  
+  // Initialize RelayClient with PROXY type
+  console.log("\nInitializing gasless relayer...");
+  
+  const builderCreds = {
+    key: builderKey,
+    secret: builderSecret,
+    passphrase: builderPassphrase
+  };
+  
+  const builderConfig = new BuilderConfig({
+    localBuilderCreds: builderCreds
+  });
+  
+  // Use PROXY type for MagicLink/Proxy wallets
+  const client = new RelayClient(
+    RELAYER_URL,
+    CHAIN_ID,
+    wallet,
+    builderConfig,
+    RelayerTxType.PROXY
+  );
+  
+  console.log("Relayer initialized.\n");
+  
+  // Redeem each condition
+  let successCount = 0;
+  
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
+    const title = (pos.title || "Unknown").substring(0, 30);
+    const negRisk = pos.negativeRisk;
+    const conditionId = pos.conditionId;
+    
+    console.log(`${i + 1}. Redeeming: ${title}...`);
+    console.log(`   Value: $${pos.totalValue.toFixed(4)}`);
+    
+    try {
+      let tx;
+      if (negRisk) {
+        // For neg risk, build amounts array from all outcomes
+        const amounts = pos.outcomes.map(o => Math.floor(o.size * 1e6));
+        tx = createNegRiskRedeemTx(conditionId, amounts);
+        console.log(`   NegRisk redeem, amounts: [${amounts}]`);
+      } else {
+        // CTF binary: redeem both outcomes at once with [1, 2]
+        tx = createCtfRedeemTx(conditionId);
+        console.log(`   CTF redeem (both outcomes)`);
+      }
+      
+      // Execute via relayer (gasless!)
+      const response = await client.execute([tx], `Redeem: ${title}`);
+      console.log(`   Submitted, waiting for confirmation...`);
+      
+      const result = await response.wait();
+      console.log(`   Result:`, JSON.stringify(result, null, 2));
+      
+      if (result && result.transactionHash) {
+        if (result.state === "STATE_FAILED") {
+          console.log(`   FAILED ON-CHAIN! Tx: ${result.transactionHash}`);
+          console.log(`   https://polygonscan.com/tx/${result.transactionHash}`);
+        } else {
+          console.log(`   SUCCESS! Tx: ${result.transactionHash}`);
+          console.log(`   https://polygonscan.com/tx/${result.transactionHash}`);
+          successCount++;
+        }
+      } else {
+        console.log(`   FAILED - no transaction hash returned`);
+      }
+      
+    } catch (error) {
+      console.log(`   ERROR: ${error.message}`);
+      if (error.transactionHash) {
+        console.log(`   https://polygonscan.com/tx/${error.transactionHash}`);
+      }
+    }
+    
+    // Small delay between redemptions
+    if (i < positions.length - 1) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  console.log(`\n${"=".repeat(50)}`);
+  console.log(`Redemption complete! ${successCount}/${positions.length} successful`);
+  
+  return { redeemed: successCount, total: positions.length };
+}
+
+// Run
+main()
+  .then(result => {
+    // Allow event loop to clean up async handles before exiting (fixes Windows libuv assertion)
+    setTimeout(() => {
+      process.exit(result.redeemed === result.total ? 0 : 1);
+    }, 100);
+  })
+  .catch(error => {
+    console.error("Fatal error:", error.message);
+    setTimeout(() => process.exit(1), 100);
+  });
+
+
+================================================================================
+3. package.json - Node.js Dependencies
+================================================================================
+
+{
+  "name": "polymarket-redemption-service",
+  "version": "1.0.0",
+  "description": "Gasless auto-redemption service for Polymarket positions",
+  "main": "redeem.js",
+  "type": "module",
+  "scripts": {
+    "redeem": "node redeem.js",
+    "check": "node redeem.js --check"
+  },
+  "dependencies": {
+    "@polymarket/builder-relayer-client": "^0.0.8",
+    "@polymarket/builder-signing-sdk": "^0.0.8",
+    "dotenv": "^16.3.1",
+    "ethers": "^5.7.2"
+  }
+}
+
+
+================================================================================
+4. requirements.txt - Python Dependencies
+================================================================================
+
+# Python dependencies for Polymarket Redemption Service
+# Install with: pip install -r requirements.txt
+
+# No external dependencies required - uses only Python standard library
+
+
+================================================================================
+5. README.md - Documentation
+================================================================================
+
+# Polymarket Gasless Redemption Service
+
+A standalone command-line service for automatically redeeming Polymarket positions using gasless transactions. This service runs periodically to check for and redeem winning positions without requiring gas fees.
+
+## Features
+
+- ✅ **Gasless Redemption**: Uses Polymarket's Builder Relayer for zero-gas transactions
+- ✅ **Automatic Mode**: Runs redemption automatically at configurable intervals
+- ✅ **Manual Mode**: One-time execution for immediate redemption
+- ✅ **Check Mode**: Check for redeemable positions without redeeming
+- ✅ **CLI Interface**: Simple command-line interface with help documentation
+
+## Prerequisites
+
+- **Python 3.8+** (uses only standard library, no external dependencies)
+- **Node.js 16+** and npm
+- **Polymarket Builder API credentials** (API key, secret, and passphrase)
+- **Wallet private key** and **proxy wallet address** (Funder Address)
+
+## Installation
+
+1. **Clone or download this repository**
+
+2. **Install Node.js dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables:**
+   
+   Create a `.env` file in the project root with the following variables:
+   ```env
+   PRIVATE_KEY=your_wallet_private_key_here
+   FUNDER_ADDRESS=your_polymarket_proxy_wallet_address_here
+   POLY_BUILDER_API_KEY=your_builder_api_key_here
+   POLY_BUILDER_SECRET=your_builder_api_secret_here
+   POLY_BUILDER_PASSPHRASE=your_builder_api_passphrase_here
+   ```
+
+   **Security Note:** Never commit your `.env` file to version control!
+
+## Usage
+
+### Command-Line Options
+
+```bash
+python redeem_cli.py [OPTIONS]
+```
+
+**Options:**
+- `--interval MINUTES` - Run redemption automatically every N minutes
+- `--once` - Run redemption once and exit (default if --interval not specified)
+- `--check` - Only check for redeemable positions, don't actually redeem
+- `--help` - Show help message and exit
+
+### Examples
+
+**One-time redemption:**
+```bash
+python redeem_cli.py --once
+```
+
+**One-time check (no redemption):**
+```bash
+python redeem_cli.py --check
+```
+
+**Automatic redemption every 15 minutes:**
+```bash
+python redeem_cli.py --interval 15
+```
+
+**Automatic redemption every hour:**
+```bash
+python redeem_cli.py --interval 60
+```
+
+**Stop automatic service:**
+Press `Ctrl+C` to gracefully stop the service
+
+### Running as a Service (Linux/macOS)
+
+You can run this as a systemd service or use a process manager like `pm2` or `supervisord`.
+
+**Example systemd service file** (`/etc/systemd/system/polymarket-redemption.service`):
+
+```ini
+[Unit]
+Description=Polymarket Gasless Redemption Service
+After=network.target
+
+[Service]
+Type=simple
+User=your_user
+WorkingDirectory=/path/to/polymarket-redemption-service
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/python3 /path/to/polymarket-redemption-service/redeem_cli.py --interval 15
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+```bash
+sudo systemctl enable polymarket-redemption
+sudo systemctl start polymarket-redemption
+```
+
+## How It Works
+
+1. **Fetches redeemable positions** from Polymarket's Data API
+2. **Groups positions by condition** to aggregate outcomes
+3. **Creates redemption transactions** for each condition
+4. **Submits transactions** via Polymarket's gasless relayer
+5. **Waits for confirmation** and logs results
+
+The service supports both:
+- **CTF (Conditional Tokens Framework)** positions - binary markets
+- **Negative Risk** positions - markets with negative risk
+
+## Output
+
+The service provides detailed logging including:
+- Number of redeemable positions found
+- Total value of redeemable positions
+- Individual position details (WIN/LOSE status)
+- Transaction hashes for successful redemptions
+- Error messages for failed redemptions
+- Links to PolygonScan for transaction verification
+
+## Troubleshooting
+
+**"Node.js is not installed or not in PATH"**
+- Install Node.js from https://nodejs.org/
+- Ensure `node` command is available in your PATH
+
+**"Missing required environment variables"**
+- Check that your `.env` file exists and contains all required variables
+- Ensure variable names match exactly (case-sensitive)
+
+**"Redemption script not found"**
+- Ensure `redeem.js` is in the same directory as `redeem_cli.py`
+- Check file permissions
+
+**"Script timed out"**
+- Network issues or API delays
+- Service will retry automatically in automatic mode
+
+**"Failed to redeem positions"**
+- Check your Builder API credentials are correct
+- Verify your proxy wallet address is correct
+- Check Polygon network status
+
+## Security Considerations
+
+- **Never share your private key** or API credentials
+- **Use environment variables** or secure credential storage
+- **Review transactions** before running in automatic mode
+- **Start with --check** mode to verify setup
+- **Monitor logs** regularly for unexpected behavior
+
+## License
+
+This service is provided as-is for personal use. Use at your own risk.
+
+## Support
+
+For issues related to:
+- **Polymarket API**: Check Polymarket documentation
+- **Builder Relayer**: Contact Polymarket support
+- **This service**: Open an issue on GitHub
+
+## Changelog
+
+### Version 1.0.0
+- Initial release
+- Automatic and manual redemption modes
+- Check-only mode
+- CLI interface with help documentation
+
+
+================================================================================
+6. .env.example - Environment Variables Template
+================================================================================
+
+# Polymarket Redemption Service Configuration
+# Copy this file to .env and fill in your values
+
+# Wallet Configuration
+PRIVATE_KEY=your_wallet_private_key_here
+FUNDER_ADDRESS=your_polymarket_proxy_wallet_address_here
+
+# Polymarket Builder API Credentials
+# Get these from your Polymarket Builder account
+POLY_BUILDER_API_KEY=your_builder_api_key_here
+POLY_BUILDER_SECRET=your_builder_api_secret_here
+POLY_BUILDER_PASSPHRASE=your_builder_api_passphrase_here
+
+
+================================================================================
+END OF CODEBASE
+================================================================================
+

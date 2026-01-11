@@ -1,0 +1,5 @@
+# Python dependencies for Polymarket Redemption Service
+# Install with: pip install -r requirements.txt
+
+# No external dependencies required - uses only Python standard library
+
